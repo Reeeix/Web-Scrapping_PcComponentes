@@ -1,0 +1,21 @@
+{
+  "name": "web-scrapping-con-profesor-2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "scrape": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "mongoose": "^9.2.1",
+    "puppeteer": "^24.37.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
