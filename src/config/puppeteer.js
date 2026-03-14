@@ -2,81 +2,64 @@ const puppeteer = require("puppeteer");
 const mongoose = require("mongoose");
 const connectDB = require("./bd");
 const fs = require("fs");
-
-const logitechProduct = mongoose.model("logitechProduct", new mongoose.Schema({
-    title: String,
-    price: String,
-    img: String
-}))
+const LogitechMouse = require("../models/logitechModel");
 
 const scrapeProducts = async () => {
-    await connectDB();
 
-    const baseSearchurl = "https://www.pccomponentes.com/search/?query=rat%C3%B3n+logitech&page=1&or-relevance&";
+  await connectDB();
 
-    const browser = await puppeteer.launch({
-        headless: false,
-        defaultViewport: null,
-        args: ['--start-maximized']
+  const url = "https://www.pccomponentes.com/search?query=raton%20logitech";
+
+  const browser = await puppeteer.launch({
+    headless: false
+  });
+
+  const page = await browser.newPage();
+
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+  );
+
+  await page.goto(url, { waitUntil: "networkidle2" });
+
+  try {
+    await page.waitForSelector("#cookiesAcceptAll", { timeout: 5000 });
+    await page.click("#cookiesAcceptAll");
+  } catch {
+    console.log("No apareció el popup de cookies");
+  }
+
+  await page.waitForSelector(".product-card");
+
+  const products = await page.$$eval(".product-card", (cards) => {
+    return cards.map(card => {
+
+      const title =
+        card.querySelector("h3")?.innerText.trim() || "";
+
+      const price =
+        card.innerText
+          .split("\n")
+          .find(text => text.includes("€")) || "";
+
+      const img =
+        card.querySelector("img")?.src || "";
+
+      return { title, price, img };
     });
+  });
 
-    const page = await browser.newPage();
+  console.log(`Productos encontrados: ${products.length}`);
 
-    await page.goto(baseSearchurl, { waitUntil: "networkidle2" });
+  fs.writeFileSync("ratonesLogitech.json", JSON.stringify(products, null, 2));
 
-    //Aceptar cookies
+  await LogitechMouse.deleteMany({});
+  await LogitechMouse.insertMany(products);
 
-    try {
-      await page.waitForSelector('#cookiesAcceptAll');
-      await page.click('#cookiesAcceptAll');
-      console.log('Cookies aceptadas');
-    } 
-      catch (error) {
-      console.log('No apareció el popup de cookies');
-    };
-    
-    //Recoger la info de cada página
+  console.log("Productos guardados ✅");
 
-   let ratonesLogitech = [];
-  //Según chatty esto lo debería de hacer más dinámico, de manera que detecte el número de páginas por si cambia
-   for (let pageNum = 1; pageNum <= 9; pageNum++) {
-   await page.goto(`https://www.pccomponentes.com/buscar/?query=raton+logitech&page=${pageNum}`, {
-     waitUntil: "networkidle2"
-   });
-
-       const titles = await page.$$eval("h3[data-e2e='title-card']", (nodes) => {
-        return nodes.map((n) => n.innerText.trim())
-      });
-       const prices = await page.$$eval('span[data-e2e="price-card"]', (nodes) => {
-        return nodes.map((n) => n.innerText.trim())
-      }) ;
-
-      const imgs = await page.$$eval(".imageContainer-Odn8PL img", nodes => nodes.map(n => n.src)
-      );
-
-      const products = titles.map((value, index) => {
-        return {
-          title: value,
-          price: prices[index],
-          img: imgs[index]
-        };
-      });
-      ratonesLogitech = ratonesLogitech.concat(products);
-    }
-    
-      fs.writeFileSync('ratonesLogitech.json', JSON.stringify(ratonesLogitech, null, 2));
-      console.log('Archivo ratonesLogitech.json creado ✅');
-      
-    //subir a mongo
-     const data = JSON.parse(fs.readFileSync('ratonesLogitech.json', 'utf-8'));
-     await logitechProduct.deleteMany({}); //Para que no me subais dos veces el archivo, que pesa bastante
-     await logitechProduct.insertMany(data);
-     console.log('Productos guardados en MongoDB ✅');
-
-
-  //  Cerrar navegador
-      await browser.close();
-      console.log('Navegador cerrado ✅');
-  };
+  await browser.close();
+  await mongoose.connection.close();
+};
 
 module.exports = scrapeProducts;
